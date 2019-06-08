@@ -145,7 +145,7 @@ class Connection
 
             // use SELECT ... FOR UPDATE to lock table
             $doctrineEnvelope = $this->executeQuery(
-                $query->getSQL().' '.$this->driverConnection->getDatabasePlatform()->getWriteLockSQL(),
+                $query->getSQL() . ' ' . $this->driverConnection->getDatabasePlatform()->getWriteLockSQL(),
                 $query->getParameters()
             )->fetch();
 
@@ -154,8 +154,6 @@ class Connection
 
                 return null;
             }
-
-            $doctrineEnvelope['headers'] = \json_decode($doctrineEnvelope['headers'], true);
 
             $queryBuilder = $this->driverConnection->createQueryBuilder()
                 ->update($this->configuration['table_name'])
@@ -169,7 +167,7 @@ class Connection
 
             $this->driverConnection->commit();
 
-            return $doctrineEnvelope;
+            return $this->decodeDoctrineEnvelope($doctrineEnvelope);
         } catch (\Throwable $e) {
             $this->driverConnection->rollBack();
 
@@ -227,7 +225,7 @@ class Connection
         return $this->executeQuery($queryBuilder->getSQL(), $queryBuilder->getParameters())->fetchColumn();
     }
 
-    public function findAll(int $limit = null): array
+    public function findAll(int $limit = null): iterable
     {
         if ($this->configuration['auto_setup']) {
             $this->setup();
@@ -238,7 +236,10 @@ class Connection
             $queryBuilder->setMaxResults($limit);
         }
 
-        return $this->executeQuery($queryBuilder->getSQL(), $queryBuilder->getParameters())->fetchAll();
+        $result = $this->executeQuery($queryBuilder->getSQL(), $queryBuilder->getParameters())->fetchAll();
+        foreach ($result as $doctrineEnvelope) {
+            yield $this->decodeDoctrineEnvelope($doctrineEnvelope);
+        }
     }
 
     public function find($id): ?array
@@ -254,7 +255,7 @@ class Connection
             'id' => $id,
         ])->fetch();
 
-        return false === $data ? null : $data;
+        return false === $data ? null : $this->decodeDoctrineEnvelope($data);
     }
 
     private function createAvailableMessagesQueryBuilder(): QueryBuilder
@@ -299,6 +300,13 @@ class Connection
         }
 
         return $stmt;
+    }
+
+    private function decodeDoctrineEnvelope(array $envelopeData): array
+    {
+        $envelopeData['headers'] = \json_decode($envelopeData['headers'], true);
+
+        return $envelopeData;
     }
 
     private function getSchema(): Schema
